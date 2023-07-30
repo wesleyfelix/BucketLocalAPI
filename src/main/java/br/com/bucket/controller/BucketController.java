@@ -80,14 +80,18 @@ public class BucketController {
     }
 
     @GetMapping("/download/{fileName}")
-    public ResponseEntity<Object> downloadFile(@PathVariable String fileName, HttpServletResponse response) {
-        try {
-            bucketService.downloadFile(fileName, response);
-            return ResponseEntity.ok("Download feito com sucesso");
-        } catch (Exception e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Erro ao fazer o download do arquivo.");
+    public ResponseEntity<Void> downloadFile(@PathVariable String fileName, HttpServletResponse response) {
+        HttpStatus status = bucketService.downloadFile(fileName, response);
+
+        if (status == HttpStatus.OK) {
+            return ResponseEntity.ok().build();
+        } else if (status == HttpStatus.NOT_FOUND) {
+            return ResponseEntity.notFound().build();
+        } else {
+            return ResponseEntity.status(status).build();
         }
     }
+
 
 
 

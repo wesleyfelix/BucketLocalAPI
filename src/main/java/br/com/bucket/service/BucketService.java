@@ -130,16 +130,17 @@ public class BucketService {
         return Files.readAllBytes(file.toPath());
     }
 
-    public void downloadFile(String fileName, HttpServletResponse response) {
+    public HttpStatus downloadFile(String fileName, HttpServletResponse response) {
+        LOGGER.info("DOWNLOAD - Iniciando");
         File file = new File(uploadDir + File.separator + fileName);
 
         if (!file.exists()) {
-            response.setStatus(HttpStatus.NOT_FOUND.value());
-            return;
+            return HttpStatus.NOT_FOUND;
         }
 
         if (file.isDirectory()) {
             try {
+                LOGGER.info("DOWNLOAD - pasta");
                 String zipFileName = file.getName() + ".zip";
                 response.setContentType("application/zip");
                 response.setHeader("Content-Disposition", "attachment; filename=" + zipFileName);
@@ -147,23 +148,26 @@ public class BucketService {
                 ZipOutputStream zipOut = new ZipOutputStream(response.getOutputStream());
                 zipFile(file, file.getName(), zipOut);
                 zipOut.close();
-
-                response.setStatus(HttpStatus.OK.value());
+                LOGGER.info("DOWNLOAD - pasta finalizado");
+                return HttpStatus.OK;
             } catch (IOException e) {
-                response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
+                return HttpStatus.INTERNAL_SERVER_ERROR;
             }
         } else {
             try {
+                LOGGER.info("DOWNLOAD - arquivo");
                 byte[] fileContent = getFileContent(fileName);
                 response.setContentType("application/octet-stream");
                 response.setHeader("Content-Disposition", "attachment; filename=" + fileName);
                 response.getOutputStream().write(fileContent);
-                response.setStatus(HttpStatus.OK.value());
+                LOGGER.info("DOWNLOAD - arquivo finalizado");
+                return HttpStatus.OK;
             } catch (IOException e) {
-                response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
+                return HttpStatus.INTERNAL_SERVER_ERROR;
             }
         }
     }
+
 
     private void zipFile(File fileToZip, String fileName, ZipOutputStream zipOut) throws IOException {
         if (fileToZip.isHidden()) {
