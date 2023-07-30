@@ -5,6 +5,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -12,7 +13,9 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import br.com.bucket.DTO.BucketDTO;
-
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
+import org.springframework.web.server.ResponseStatusException;
 
 
 import java.io.IOException;
@@ -77,17 +80,24 @@ public class BucketController {
     }
 
     @GetMapping("/download/{fileName}")
-    public void downloadFile(@PathVariable String fileName, HttpServletResponse response) {
-        bucketService.downloadFile(fileName, response);
+    public ResponseEntity<Object> downloadFile(@PathVariable String fileName, HttpServletResponse response) {
+        try {
+            bucketService.downloadFile(fileName, response);
+            return ResponseEntity.ok("Download feito com sucesso");
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Erro ao fazer o download do arquivo.");
+        }
     }
+
+
 
     @DeleteMapping("/delete/{fileName}")
     public ResponseEntity<String> deleteFile(@PathVariable String fileName) {
-        boolean deleted = bucketService.deleteFile(fileName);
+        boolean deleted = bucketService.deleteFileOrFolder(fileName);
         if (deleted) {
-            return ResponseEntity.ok("Arquivo " + fileName + " deletado com sucesso!");
+            return ResponseEntity.ok("Arquivo ou pasta " + fileName + " deletado(a) com sucesso!");
         } else {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Arquivo não encontrado.");
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Arquivo ou pasta não encontrado(a).");
         }
     }
 }

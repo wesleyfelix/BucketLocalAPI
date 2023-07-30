@@ -5,10 +5,14 @@ import br.com.bucket.DTO.FolderInfoDTO;
 import br.com.bucket.controller.BucketController;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
@@ -19,6 +23,11 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 @Service
 public class BucketService {
@@ -45,7 +54,7 @@ public class BucketService {
         LOGGER.info("UPLOAD - Criando arquivo");
         File dest = new File(targetDirectory + File.separator + file.getOriginalFilename());
         file.transferTo(dest);
-        LOGGER.info("UPLOAD - Finalizado");
+        LOGGER.info("UPLOAD -Criando arquivo Finalizado");
     }
 
     public void createFolder(String folderName, String directory) throws IOException {
@@ -56,11 +65,14 @@ public class BucketService {
 
         File newFolder = new File(targetDirectory + File.separator + folderName);
         if (!newFolder.exists()) {
+            LOGGER.info("UPLOAD - Criando pasta");
             newFolder.mkdirs();
+            LOGGER.info("UPLOAD - Criando pasta finalizado");
         }
     }
 
     public List<BucketDTO> listFiles() {
+        LOGGER.info("LISTAR PASTAS/ARQUIVOS - Iniciando");
         File directory = new File(uploadDir);
         List<BucketDTO> fileList = new ArrayList<>();
 
@@ -72,7 +84,7 @@ public class BucketService {
                 }
             }
         }
-
+        LOGGER.info("LISTAR PASTAS/ARQUIVOS - Finalizado");
         return fileList;
     }
 
@@ -91,9 +103,26 @@ public class BucketService {
 
         return fileList;
     }
-    public boolean deleteFile(String fileName) {
+    public boolean deleteFileOrFolder(String fileName) {
         File file = new File(uploadDir + File.separator + fileName);
-        return file.exists() && file.delete();
+        return deleteFileOrFolderRecursive(file);
+    }
+
+    private boolean deleteFileOrFolderRecursive(File file) {
+        if (!file.exists()) {
+            return false;
+        }
+
+        if (file.isDirectory()) {
+            File[] files = file.listFiles();
+            if (files != null) {
+                for (File subFile : files) {
+                    deleteFileOrFolderRecursive(subFile);
+                }
+            }
+        }
+
+        return file.delete();
     }
 
     public byte[] getFileContent(String fileName) throws IOException {
@@ -102,16 +131,73 @@ public class BucketService {
     }
 
     public void downloadFile(String fileName, HttpServletResponse response) {
-        try {
-            byte[] fileContent = getFileContent(fileName);
-            response.setContentType("application/octet-stream");
-            response.setHeader("Content-Disposition", "attachment; filename=" + fileName);
-            response.getOutputStream().write(fileContent);
-            response.flushBuffer();
-        } catch (IOException e) {
-            e.printStackTrace();
+        File file = new File(uploadDir + File.separator + fileName);
+
+        if (!file.exists()) {
+            response.setStatus(HttpStatus.NOT_FOUND.value());
+            return;
+        }
+
+        if (file.isDirectory()) {
+            try {
+                String zipFileName = file.getName() + ".zip";
+                response.setContentType("application/zip");
+                response.setHeader("Content-Disposition", "attachment; filename=" + zipFileName);
+
+                ZipOutputStream zipOut = new ZipOutputStream(response.getOutputStream());
+                zipFile(file, file.getName(), zipOut);
+                zipOut.close();
+
+                response.setStatus(HttpStatus.OK.value());
+            } catch (IOException e) {
+                response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
+            }
+        } else {
+            try {
+                byte[] fileContent = getFileContent(fileName);
+                response.setContentType("application/octet-stream");
+                response.setHeader("Content-Disposition", "attachment; filename=" + fileName);
+                response.getOutputStream().write(fileContent);
+                response.setStatus(HttpStatus.OK.value());
+            } catch (IOException e) {
+                response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
+            }
         }
     }
+
+    private void zipFile(File fileToZip, String fileName, ZipOutputStream zipOut) throws IOException {
+        if (fileToZip.isHidden()) {
+            return;
+        }
+
+        if (fileToZip.isDirectory()) {
+            if (fileName.endsWith("/")) {
+                zipOut.putNextEntry(new ZipEntry(fileName));
+                zipOut.closeEntry();
+            } else {
+                zipOut.putNextEntry(new ZipEntry(fileName + "/"));
+                zipOut.closeEntry();
+            }
+
+            File[] children = fileToZip.listFiles();
+            for (File childFile : children) {
+                zipFile(childFile, fileName + "/" + childFile.getName(), zipOut);
+            }
+        } else {
+            FileInputStream fis = new FileInputStream(fileToZip);
+            ZipEntry zipEntry = new ZipEntry(fileName);
+            zipOut.putNextEntry(zipEntry);
+
+            byte[] bytes = new byte[1024];
+            int length;
+            while ((length = fis.read(bytes)) >= 0) {
+                zipOut.write(bytes, 0, length);
+            }
+
+            fis.close();
+        }
+    }
+
 
     private BucketDTO getBucketDTOFromFile(File file) {
         BucketDTO dto = new BucketDTO();
